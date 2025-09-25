@@ -11,6 +11,8 @@ These strains differ in the functionality or lack thereof of the protein CP12, w
 5. Δcp12::cp12ΔCysN (complement, with mutation in the Cysteine pair in N-terminal)
 6. Δcp12::cp12ΔCysNC (complement, with mutation in both Cysteine pairs in C-terminal and N-terminal)
 
+For more information regarding the strains, read https://www.frontiersin.org/journals/plant-science/articles/10.3389/fpls.2022.1028794/full.
+
 The three metabolites for which we had measurements of relative enrichment and metabolite concentration were 3PGA, 2PGA and PEP under dark conditions only with labeled <sup>13</sup>CO<sub>2</sub> as carbon source.
 Therefore, we created scenarios to compare results in flux estimation, either by reducing the number of timepoints, utilizing or not the actual metabolite concentrations and considering or not reversibility. 
 A combination of these factors were used in the scenarios created:
