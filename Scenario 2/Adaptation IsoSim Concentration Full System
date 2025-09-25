@@ -1,0 +1,604 @@
+# Adapted from:
+#
+# millard@insa-toulouse.fr
+#
+# IsoSim: stoichiometric, kinetic and isotopic modeling of metabolic systems
+#
+# https://github.com/MetaSys-LISBP/IsoSim
+#
+# https://doi.org/10.1101/735308
+#
+# Copyright 2019, INRA, France
+# License: GNU General Public License v3 (see license.txt for details)
+
+####################################
+cat("
+This code calculates the flux through the 3PG-2PG-PEP pathway for 6 strains
+of Synechocystis sp. Upper bound for flux in dcp12 was raised from 10 to 100.
+
+")
+####################################
+
+####################################
+cat("   ... initialize R environment ...\n\n")
+####################################
+
+
+# Path of the prenyl pyrophosphate pathway model
+#setwd("C:/Users/coron/Documents/Thesis/isosim/models/thesis_pathway/")
+setwd("/home/coronamacias/Thesis/IsoSim/models/thesis_pathway/")
+
+# Get current directory
+wd <- getwd()
+
+# Load IsoSim
+setwd(file.path(dirname(dirname(wd)), "isosim"))
+source("isosim.R")
+
+# Go back to working directory and create "res" folder to store the results
+setwd(wd)
+if (!file.exists("Run-all-10-concentratrions-upper100")){
+  dir.create(file.path(wd, "Run-all-10-concentrations-upper100"))
+}
+setwd(file.path(wd, "Run-all-10-concentrations-upper100"))
+
+
+#########################
+### GLOBAL PARAMETERS ###
+#########################
+
+# number of cores to use in parallel, i.e. at most how many child processes will be run simultaneously
+# single-core version can be used by setting 'numCores' to NULL
+numCores <- 10
+
+# number of iterations for Monte Carlo sensitivity analysis
+niter <- 4
+
+
+####################################
+cat("\n   ... construct isotopic model of the 3PG <-> 2PG <-> PEP pathway ...\n\n")
+####################################
+
+rxn <- list(r1f = list("R"=c("PG2", "PG3"), "C"=c(1, -1),     "E"="v1",   "T"=c("ABC", "ABC")),
+            r1r = list("R"=c("PG2", "PG3"), "C"=c(-1, 1),     "E"="v1",   "T"=c("ABC", "ABC")),
+            r2f = list("R"=c("PEP", "PG2"),    "C"=c(1, -1),     "E"="v1",   "T"=c("ABC", "ABC")),
+            r2r = list("R"=c("PEP", "PG2"),    "C"=c(-1, 1),     "E"="v1",   "T"=c("ABC", "ABC")),
+            r3 = list("R"=c("PEP"), "C"=c(-1),        "E"="v1",  "T"=c("ABC")))
+
+net <- net2mat(rxn)
+
+
+####################################
+cat("\n   ... fit label inputs ...\n\n")
+####################################
+
+# measurement times (in min)
+times <- c(0,5,10,15,30,60,90)
+noise <- 0.0005
+
+# 13C-enrichments of PG3 (label input) in strains "dcp12", "dcp12::cp12", "dcp12::cp12dCysC", "dcp12::cp12dCysN", "dcp12::cp12dCysNC", "WT K"
+original_data_input <- cbind("WTK_PG3_1-2-3"=c(0, 0, 0, 0, 0, 0, 0),
+                    "dcp12_PG3_1-2-3"=c(0,0,0.00397159,0.011314637,0.062717565,0.241552885,0.337020845),
+                    "dcp12cp12_PG3_1-2-3"=c(0, 0, 0, 0, 0, 0.001792413, 0.00084248),
+                    "dcp12cp12dCysC_PG3_1-2-3"=c(0, 0, 0, 0.00304893, 0.050659085, 0.0441527275, 0.0458769425),
+                    "dcp12cp12dCysN_PG3_1-2-3"=c(0, 0, 0, 0, 0, 0, 0),
+                    "dcp12cp12dCysNC_PG3_1-2-3"=c(0, 0, 0, 0.0161069625, 0.077143535, 0.219639593333333, 0.233304856666667))
+
+
+data_input <- apply(original_data_input, 2, function(col) { #Add positive noise
+  col + abs(rnorm(length(col), mean = 0, sd = noise))  })
+
+# fit labeling dynamics of PG3 to define label input
+enr_in <- fit_label_input(data_input, t=times, file="res_fit_enr", mc.cores=numCores)
+
+
+####################################
+cat("\n   ... calculate fluxes ...\n\n")
+####################################
+
+####################################
+cat("\n      ... WT K strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_wt <- c(0, 0, 0, 0, 0, 0, 0)
+enr_PEP_wt <- c(0, 0, 0, 0, 0, 0, 0)
+data_exp_wt <- cbind(times, enr_PG2_wt, enr_PEP_wt)
+colnames(data_exp_wt) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+# anFun_fit_wt <- list("PG3_1-2-3-M0" = enr_in$anFun[[1]], 
+#                   "PG3_1-2-3-M1" = enr_in$anFun[[2]],
+#                   "PG3_1-2-3-M2" = enr_in$anFun[[3]],
+#                   "PG3_1-2-3-M3" = enr_in$anFun[[4]])
+
+anFun_fit_wt <- list("PG3_1-2-3-M0" = enr_in$anFun[[1]], 
+                     "PG3_1-2-3-M1" = enr_in$anFun[[2]],
+                     "PG3_1-2-3-M2" = enr_in$anFun[[3]],
+                     "PG3_1-2-3-M3" = enr_in$anFun[[4]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_wt <- c("PG3"= 1231.698242, "PG2"=5.479722338, "PEP"=743.7367661) #Most os Sebastian initial met concentr. 1.100000e-01 or 1.100000e-02
+#    fluxes
+kp_wt <- c("v1"=0)
+#    sd of measurements
+sd_meas_wt <- list(iso=0.5, conc=c("PG2"=0.023380, "PEP"=1.399425))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_wt <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_wt <- c("v1"=10, "PG2"=1, "PEP"=10)
+te_loc_wt <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_wt <- fit(net        = net,
+               times      = times,
+               kp         = kp_wt,
+               to_est     = te_wt,
+               te_upc     = te_upc_wt[te_wt],
+               te_loc     = te_loc_wt[te_wt],
+               te_upc_det = NULL,
+               te_loc_det = NULL,
+               eq_det     = NULL,
+               data_meas  = list(iso=data_exp_wt, conc=c("PG2"=0.023380, "PEP"=1.399425)),
+               sd_meas    = sd_meas_wt,
+               meta_conc  = meta_conc_wt,
+               iso_conc   = NULL,
+               mode       = "enrichments",
+               anFun      = anFun_fit_wt,
+               trf        = NULL,
+               events     = NULL,
+               p          = 0.0,
+               subDir     = "fit_wt",
+               nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+               method     = "FORTRAN",
+               niter      = niter)
+
+# display estimated parameters
+resF_wt$sens$summary
+
+
+####################################
+cat("\n      ... dcp12 strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_dcp12 <- c(0, 0, 0.0010236875, 0.005175985, 0.1018379825, 0.2487054925, 0.3470264875)
+enr_PEP_dcp12 <- c(0, 0, 0.007159935, 0.0217724333333333, 0.10046094, 0.2625095, 0.343587925)
+data_exp_dcp12 <- cbind(times, enr_PG2_dcp12, enr_PEP_dcp12)
+colnames(data_exp_dcp12) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+anFun_fit_dcp12 <- list("PG3_1-2-3-M0" = enr_in$anFun[[5]], 
+                  "PG3_1-2-3-M1" = enr_in$anFun[[6]],
+                  "PG3_1-2-3-M2" = enr_in$anFun[[7]],
+                  "PG3_1-2-3-M3" = enr_in$anFun[[8]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_dcp12 <- c("PG3"=1290.13851733636, "PG2"=8.23670666621142, "PEP"=870.883044294975) #Most os Sebastian initial met concentr. 1.100000e-01 or 1.100000e-02
+#    fluxes
+kp_dcp12 <- c("v1"=1)
+#    sd of measurements
+sd_meas_dcp12 <- list(iso=0.03, conc=c("PG2"=0.022175, "PEP"=1.750731279))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_dcp12 <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_dcp12 <- c("v1"=100, "PG2"=1, "PEP"=15)
+te_loc_dcp12 <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_dcp12 <- fit(net     = net,
+               times      = times,
+               kp         = kp_dcp12,
+               to_est     = te_dcp12,
+               te_upc     = te_upc_dcp12[te_dcp12],
+               te_loc     = te_loc_dcp12[te_dcp12],
+               te_upc_det = NULL,
+               te_loc_det = NULL,
+               eq_det     = NULL,
+               data_meas  = list(iso=data_exp_dcp12, conc=c("PG2"=0.022175, "PEP"=1.750731279)),
+               sd_meas    = sd_meas_dcp12,
+               meta_conc  = meta_conc_dcp12,
+               iso_conc   = NULL,
+               mode       = "enrichments",
+               anFun      = anFun_fit_dcp12,
+               trf        = NULL,
+               events     = NULL,
+               p          = 0.0,
+               subDir     = "fit_dcp12",
+               nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+               method     = "FORTRAN",
+               niter      = niter)
+
+# display estimated parameters
+resF_dcp12$sens$summary
+
+
+####################################
+cat("\n      ... dcp12::cp12 strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_dcp12_cp12 <- c(0, 0, 0, 0, 0, 0.000253238, 0.003050705)
+enr_PEP_dcp12_cp12 <- c(0, 0, 0, 0, 0, 0.004714665, 0.0074160425)
+data_exp_dcp12_cp12 <- cbind(times, enr_PG2_dcp12_cp12, enr_PEP_dcp12_cp12)
+colnames(data_exp_dcp12_cp12) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+anFun_fit_dcp12_cp12 <- list("PG3_1-2-3-M0" = enr_in$anFun[[9]], 
+                  "PG3_1-2-3-M1" = enr_in$anFun[[10]],
+                  "PG3_1-2-3-M2" = enr_in$anFun[[11]],
+                  "PG3_1-2-3-M3" = enr_in$anFun[[12]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_dcp12_cp12 <- c("PG3"=1045.01809443301, "PG2"=5.74411473678459, "PEP"=621.423909679977) 
+#    fluxes
+kp_dcp12_cp12 <- c("v1"=0)
+#    sd of measurements
+sd_meas_dcp12_cp12 <- list(iso=0.006, conc=c("PG2"=0.013020, "PEP"=1.171822098))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_dcp12_cp12 <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_dcp12_cp12 <- c("v1"=10, "PG2"=1, "PEP"=15)
+te_loc_dcp12_cp12 <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_dcp12_cp12 <- fit(net     = net,
+                  times      = times,
+                  kp         = kp_dcp12_cp12,
+                  to_est     = te_dcp12_cp12,
+                  te_upc     = te_upc_dcp12_cp12[te_dcp12_cp12],
+                  te_loc     = te_loc_dcp12_cp12[te_dcp12_cp12],
+                  te_upc_det = NULL,
+                  te_loc_det = NULL,
+                  eq_det     = NULL,
+                  data_meas  = list(iso=data_exp_dcp12_cp12, conc=c("PG2"=0.013020, "PEP"=1.171822098)),
+                  sd_meas    = sd_meas_dcp12_cp12,
+                  meta_conc  = meta_conc_dcp12_cp12,
+                  iso_conc   = NULL,
+                  mode       = "enrichments",
+                  anFun      = anFun_fit_dcp12_cp12,
+                  trf        = NULL,
+                  events     = NULL,
+                  p          = 0.0,
+                  subDir     = "fit_dcp12_cp12",
+                  nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+                  method     = "FORTRAN",
+                  niter      = niter)
+
+# display estimated parameters
+resF_dcp12_cp12$sens$summary
+
+
+####################################
+cat("\n      ... dcp12::cp12dCysC strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_dcp12_cp12dCysC <- c(0, 0, 0, 0.0067180525, 0.0495900833333333, 0.0565733, 0.0485604875)
+enr_PEP_dcp12_cp12dCysC <- c(0, 0.1172929425, 0.00006518, 0.0141154775, 0.05690679, 0.05690679, 0.058643385)
+data_exp_dcp12_cp12dCysC <- cbind(times, enr_PG2_dcp12_cp12dCysC, enr_PEP_dcp12_cp12dCysC)
+colnames(data_exp_dcp12_cp12dCysC) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+anFun_fit_dcp12_cp12dCysC <- list("PG3_1-2-3-M0" = enr_in$anFun[[13]], 
+                  "PG3_1-2-3-M1" = enr_in$anFun[[14]],
+                  "PG3_1-2-3-M2" = enr_in$anFun[[15]],
+                  "PG3_1-2-3-M3" = enr_in$anFun[[16]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_dcp12_cp12dCysC <- c("PG3"=859.155016461378, "PG2"=10.611146069799, "PEP"=622.577331776105) 
+#    fluxes
+kp_dcp12_cp12dCysC <- c("v1"=0)
+#    sd of measurements
+sd_meas_dcp12_cp12dCysC <- list(iso=0.09, conc=c("PG2"=0.017141, "PEP"=0.584926919))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_dcp12_cp12dCysC <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_dcp12_cp12dCysC <- c("v1"=10, "PG2"=1, "PEP"=5)
+te_loc_dcp12_cp12dCysC <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_dcp12_cp12dCysC <- fit(net     = net,
+                       times      = times,
+                       kp         = kp_dcp12_cp12dCysC,
+                       to_est     = te_dcp12_cp12dCysC,
+                       te_upc     = te_upc_dcp12_cp12dCysC[te_dcp12_cp12dCysC],
+                       te_loc     = te_loc_dcp12_cp12dCysC[te_dcp12_cp12dCysC],
+                       te_upc_det = NULL,
+                       te_loc_det = NULL,
+                       eq_det     = NULL,
+                       data_meas  = list(iso=data_exp_dcp12_cp12dCysC, conc=c("PG2"=0.017141, "PEP"=0.584926919)),
+                       sd_meas    = sd_meas_dcp12_cp12dCysC,
+                       meta_conc  = meta_conc_dcp12_cp12dCysC,
+                       iso_conc   = NULL,
+                       mode       = "enrichments",
+                       anFun      = anFun_fit_dcp12_cp12dCysC,
+                       trf        = NULL,
+                       events     = NULL,
+                       p          = 0.0,
+                       subDir     = "fit_dcp12_cp12dCysC",
+                       nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+                       method     = "FORTRAN",
+                       niter      = niter)
+
+# display estimated parameters
+resF_dcp12_cp12dCysC$sens$summary
+
+
+####################################
+cat("\n      ... dcp12::cp12dCysN strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_dcp12_cp12dCysN <- c(0, 0, 0, 0, 0, 0, 0)
+enr_PEP_dcp12_cp12dCysN <- c(0, 0, 0, 0, 0, 0.001211588, 0.001158125)
+data_exp_dcp12_cp12dCysN <- cbind(times, enr_PG2_dcp12_cp12dCysN, enr_PEP_dcp12_cp12dCysN)
+colnames(data_exp_dcp12_cp12dCysN) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+anFun_fit_dcp12_cp12dCysN <- list("PG3_1-2-3-M0" = enr_in$anFun[[17]], #Changed ipp and adjusted to what there is in enr_in$anFun ★
+                  "PG3_1-2-3-M1" = enr_in$anFun[[18]],
+                  "PG3_1-2-3-M2" = enr_in$anFun[[19]],
+                  "PG3_1-2-3-M3" = enr_in$anFun[[20]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_dcp12_cp12dCysN <- c("PG3"=966.898635494004, "PG2"=6.03444476511343, "PEP"=726.030508701045) #Most os Sebastian initial met concentr. 1.100000e-01 or 1.100000e-02
+#    fluxes
+kp_dcp12_cp12dCysN <- c("v1"=0)
+#    sd of measurements
+sd_meas_dcp12_cp12dCysN <- list(iso=0.01, conc=c("PG2"=0.013923, "PEP"=1.552505587))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_dcp12_cp12dCysN <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_dcp12_cp12dCysN <- c("v1"=10, "PG2"=1, "PEP"=5)
+te_loc_dcp12_cp12dCysN <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_dcp12_cp12dCysN <- fit(net     = net,
+                            times      = times,
+                            kp         = kp_dcp12_cp12dCysN,
+                            to_est     = te_dcp12_cp12dCysN,
+                            te_upc     = te_upc_dcp12_cp12dCysN[te_dcp12_cp12dCysN],
+                            te_loc     = te_loc_dcp12_cp12dCysN[te_dcp12_cp12dCysN],
+                            te_upc_det = NULL,
+                            te_loc_det = NULL,
+                            eq_det     = NULL,
+                            data_meas  = list(iso=data_exp_dcp12_cp12dCysN, conc=c("PG2"=0.013923, "PEP"=1.552505587)),
+                            sd_meas    = sd_meas_dcp12_cp12dCysN,
+                            meta_conc  = meta_conc_dcp12_cp12dCysN,
+                            iso_conc   = NULL,
+                            mode       = "enrichments",
+                            anFun      = anFun_fit_dcp12_cp12dCysN,
+                            trf        = NULL,
+                            events     = NULL,
+                            p          = 0.0,
+                            subDir     = "fit_dcp12_cp12dCysN",
+                            nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+                            method     = "FORTRAN",
+                            niter      = niter)
+
+# display estimated parameters
+resF_dcp12_cp12dCysN$sens$summary
+
+
+####################################
+cat("\n      ... dcp12::cp12dCysNC strain\n\n")
+####################################
+
+# 13C-enrichments of metabolic intermediates (PG2A, PEP)
+enr_PG2_dcp12_cp12dCysNC <- c(0, 0, 0, 0.011180058, 0.076752798, 0.204328553, 0.24085604)
+enr_PEP_dcp12_cp12dCysNC <- c(0,	0,	0.002868095,	0.019125045,	0.085424458,	0.273779933,	0.265068757)
+data_exp_dcp12_cp12dCysNC <- cbind(times, enr_PG2_dcp12_cp12dCysNC, enr_PEP_dcp12_cp12dCysNC)
+colnames(data_exp_dcp12_cp12dCysNC) <- c("time", "PG2_1-2-3", "PEP_1-2-3")
+
+
+# define analytical functions of label input
+# here we use functions from the best fit
+anFun_fit_dcp12_cp12dCysNC <- list("PG3_1-2-3-M0" = enr_in$anFun[[21]], #Changed ipp and adjusted to what there is in enr_in$anFun ★
+                  "PG3_1-2-3-M1" = enr_in$anFun[[22]],
+                  "PG3_1-2-3-M2" = enr_in$anFun[[23]],
+                  "PG3_1-2-3-M3" = enr_in$anFun[[24]])
+
+# initial parameters
+#    metabolite concentrations
+meta_conc_dcp12_cp12dCysNC <- c("PG3"=954.676194927616, "PG2"=5.50614272562167, "PEP"=728.604120288041) 
+#    fluxes
+kp_dcp12_cp12dCysNC <- c("v1"=1)
+#    sd of measurements
+sd_meas_dcp12_cp12dCysNC <- list(iso=0.02, conc=c("PG2"=0.015778, "PEP"=1.078894006))
+#    names of parameters (concentrations & fluxes) to estimate  
+te_dcp12_cp12dCysNC <- c("v1", "PG2", "PEP")  # Here is somehow less parameters in the original example
+#    upper & lower constraints on parameters
+te_upc_dcp12_cp12dCysNC <- c("v1"=10, "PG2"=1, "PEP"=15)
+te_loc_dcp12_cp12dCysNC <- c("v1"=1e-4, "PG2"=1e-4, "PEP"=1e-1)
+
+# run flux calculation
+resF_dcp12_cp12dCysNC <- fit(net     = net,
+                       times      = times,
+                       kp         = kp_dcp12_cp12dCysNC,
+                       to_est     = te_dcp12_cp12dCysNC,
+                       te_upc     = te_upc_dcp12_cp12dCysNC[te_dcp12_cp12dCysNC],
+                       te_loc     = te_loc_dcp12_cp12dCysNC[te_dcp12_cp12dCysNC],
+                       te_upc_det = NULL,
+                       te_loc_det = NULL,
+                       eq_det     = NULL,
+                       data_meas  = list(iso=data_exp_dcp12_cp12dCysNC, conc=c("PG2"=0.015778, "PEP"=1.078894006)),
+                       sd_meas    = sd_meas_dcp12_cp12dCysNC,
+                       meta_conc  = meta_conc_dcp12_cp12dCysNC,
+                       iso_conc   = NULL,
+                       mode       = "enrichments",
+                       anFun      = anFun_fit_dcp12_cp12dCysNC,
+                       trf        = NULL,
+                       events     = NULL,
+                       p          = 0.0,
+                       subDir     = "fit_dcp12_cp12dCysNC",
+                       nlsic_ctrl = list(errx=1.e-6, maxit=50, trace=1, ci=list(report=T), history=F, adaptbt=T),
+                       method     = "FORTRAN",
+                       niter      = niter)
+
+# display estimated parameters
+resF_dcp12_cp12dCysNC$sens$summary
+
+#load("C:/Users/coron/Documents/Thesis/isosim/models/thesis_pathway/Run-3pg-2pg-pep/Adaptation_all.RData")
+
+####################################
+cat("\n   ... plot results ...\n\n")
+####################################
+print(RUN)
+# colors for "WT", "dcp12", "dcp12::cp12", "dcp12::cp12dCysC", "dcp12::cp12dCysN and "dcp12::cp12dCysNC" datasets
+col_f <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
+
+
+# Small offset to avoid plotting issues with zero-only values
+epsilon <- 1e-6
+
+# Standard deviation for WT
+sd_wt <- list("3PG"=c(0, 0, 0, 0, 0, 0, 0),
+              "2PG"=c(0, 0, 0, 0, 0, 0, 0),
+              "PEP"=c(0, 0, 0, 0, 0, 0, 0))
+
+
+#################################################################################
+
+# dcp12
+
+
+# Standard deviation for dcp12
+sd_dcp12 <- list(
+  "3PG"=c(0, 0, 0.00794318, 0.010755359, 0.043902583, 0.03444038, 0.044244396),
+  "2PG"=c(0, 0, 0.002047375, 0.007319948, 0.034679842, 0.043441443, 0.075407513),
+  "PEP"=c(0, 0, 0.011553127, 0.012540274, 0.020043716, 0.043465652, 0.030065502)
+)
+
+
+################################################################################################
+# dcp1::cp12
+
+
+# Standard deviation for dcp12::cp12
+sd_dcp12_cp12 <- list(
+  "3PG"=c(0, 0, 0, 0, 0, 0.003584825,	0.00168496),
+  "2PG"=c(0, 0,	0, 0,	0, 0.000506475,	0.00610141),
+  "PEP"=c(0, 0, 0, 0, 0, 0.00942933, 0.012240472)
+)
+
+##############################################################################################
+# dcp12::cp12dCysC
+
+
+# Standard deviation for dcp12::cp12
+sd_dcp12_cp12dCysC <- list(
+  "3PG"=c(0, 0, 0, 0.003532703, 0.009230331, 0.030750634, 0.009451074),
+  "2PG"=c(0, 0, 0, 0.007980192, 0.01988221, 0.011417744, 0.013267179),
+  "PEP"=c(0, 0.234585885, 0.00013036, 0.006763073, 0.011860306, 0.008635114, 0.004884389)
+)
+
+
+##############################################################################################
+# dcp12::cp12dCysN
+
+
+# Standard deviation for dcp12::cp12
+sd_dcp12_cp12dCysN <- list(
+  "3PG"=c(0, 0, 0, 0, 0, 0, 0),
+  "2PG"=c(0, 0, 0, 0, 0, 0, 0),
+  "PEP"=c(0, 0, 0, 0, 0, 0.00167140000030663, 0.00231625)
+)
+
+
+
+##############################################################################################
+# dcp12::cp12dCysNC
+
+
+
+# Standard deviation for dcp12::cp12
+sd_dcp12_cp12dCysNC <- list(
+  "3PG"=c(0, 0, 0, 0.018721401, 0.030749119, 0.02480931, 0.050393998),
+  "2PG"=c(0, 0, 0, 0.019012441, 0.029334965, 0.023493797, 0.037075651),
+  "PEP"=c(0, 0, 0.00573619, 0.019240409, 0.025263831, 0.004137565, 0.029436832)
+)
+
+
+
+################################################################################
+################################################################################
+
+# 
+# par(mar = c(10,5,4,2)) 
+# pdf(paste0("Fig_Estimated_fluxes_all_",RUN,".pdf", sep=""))
+
+flux <- c(resF_wt$result$par["v1"],
+          resF_dcp12$result$par["v1"],
+          resF_dcp12_cp12$result$par["v1"],
+          resF_dcp12_cp12dCysC$result$par["v1"],
+          resF_dcp12_cp12dCysN$result$par["v1"],
+          resF_dcp12_cp12dCysNC$result$par["v1"]
+)
+sd_flux<- c(resF_wt$sens$summary["v1", "sd"],
+            resF_dcp12$sens$summary["v1", "sd"],
+            resF_dcp12_cp12$sens$summary["v1", "sd"],
+            resF_dcp12_cp12dCysC$sens$summary["v1", "sd"],
+            resF_dcp12_cp12dCysN$sens$summary["v1", "sd"],
+            resF_dcp12_cp12dCysNC$sens$summary["v1", "sd"])
+
+# barCenters <- barplot(flux, beside=FALSE, ylim=c(0,max(flux)+0.2), ylab="PEP production (nmol/OD750/min)", 
+#                       names.arg=c("WT", "dcp12", "dcp12:cp12", "dcp12:cp12dCysC", "dcp12:cp12dCysN",
+#                                   "dcp12:cp12dCysNC"), las=2,  col=col_f, main = "Estimated fluxes")
+# segments(barCenters, flux - sd_flux, barCenters,
+#          flux + sd_flux, lwd = 1.5)
+# segments(barCenters-0.1, flux + sd_flux, barCenters+0.1,
+#          flux + sd_flux, lwd = 1.5)
+# segments(barCenters-0.1, flux - sd_flux, barCenters+0.1,
+#          flux - sd_flux, lwd = 1.5)
+# # Add the turnover rate values on top of the bars
+# text(x = barCenters, y = flux + sd_flux + 0.05, labels = round(flux, 2), xpd = TRUE, cex = 0.9)
+# dev.off()
+# 
+# 
+# par(mar = c(10,5,4,2))
+# pdf(paste0("Fig_PEP_turnover_",RUN,".pdf", sep=""))
+
+turnover_PEP <- c(resF_wt$result$par["PEP"]/resF_wt$result$par["v1"],
+                  resF_dcp12$result$par["PEP"]/resF_dcp12$result$par["v1"],
+                  resF_dcp12_cp12$result$par["PEP"]/resF_dcp12_cp12$result$par["v1"],
+                  resF_dcp12_cp12dCysC$result$par["PEP"]/resF_dcp12_cp12dCysC$result$par["v1"],
+                  resF_dcp12_cp12dCysN$result$par["PEP"]/resF_dcp12_cp12dCysN$result$par["v1"],
+                  resF_dcp12_cp12dCysNC$result$par["PEP"]/resF_dcp12_cp12dCysNC$result$par["v1"])
+
+sd_turnover_PEP <- c(sqrt(resF_wt$sens$summary["v1", "sd"]**2+resF_wt$sens$summary["PEP", "sd"]**2),
+                     sqrt(resF_dcp12$sens$summary["v1", "sd"]**2+resF_dcp12$sens$summary["PEP", "sd"]**2),
+                     sqrt(resF_dcp12_cp12$sens$summary["v1", "sd"]**2+resF_dcp12_cp12$sens$summary["PEP", "sd"]**2),
+                     sqrt(resF_dcp12_cp12dCysC$sens$summary["v1", "sd"]**2+resF_dcp12_cp12dCysC$sens$summary["PEP", "sd"]**2),
+                     sqrt(resF_dcp12_cp12dCysN$sens$summary["v1", "sd"]**2+resF_dcp12_cp12dCysN$sens$summary["PEP", "sd"]**2),
+                     sqrt(resF_dcp12_cp12dCysNC$sens$summary["v1", "sd"]**2+resF_dcp12_cp12dCysNC$sens$summary["PEP", "sd"]**2))
+
+# barCenters <- barplot(turnover_PEP, beside=FALSE, ylim=c(0,max(turnover_PEP)), ylab="PEP turnover (min-1)", 
+#                       names.arg=c("WT", "dcp12", "dcp12:cp12", "dcp12:cp12dCysC", "dcp12:cp12dCysN", "dcp12:cp12dCysNC"), las=2, col=col_f)
+# segments(barCenters, turnover_PEP - sd_turnover_PEP, barCenters,
+#          turnover_PEP + sd_turnover_PEP, lwd = 1.5)
+# segments(barCenters-0.1, turnover_PEP + sd_turnover_PEP, barCenters+0.1,
+#          turnover_PEP + sd_turnover_PEP, lwd = 1.5)
+# segments(barCenters-0.1, turnover_PEP - sd_turnover_PEP, barCenters+0.1,
+#          turnover_PEP - sd_turnover_PEP, lwd = 1.5)
+# 
+# # Add the turnover rate values on top of the bars
+# text(x = barCenters, y = turnover_PEP + sd_turnover_PEP + 100, labels = round(turnover_PEP, 2), xpd = TRUE, cex = 0.9)
+# dev.off()
+# 
+# setwd(wd)
