@@ -2,12 +2,11 @@ In this work we tried to replicate the use of IsoSim, specifically the model "pr
 with a small network with only three metabolites in Synechocystis sp. 6803 PCC with 6 different strains.
 These strains differ in the functionality or lack thereof of the protein CP12:
 
-*Wild Type
-*Δcp12
-*Δcp12::cp12 (complement, wild type-like)
-*Δcp12::cp12ΔCysC (complement, with mutation in the Cysteine pair in C-terminal)
-*Δcp12::cp12ΔCysN (complement, with mutation in the Cysteine pair in N-terminal)
-*Δcp12::cp12ΔCysNC (complement, with mutation in both Cysteine pairs in C-terminal and N-terminal)
++Wild Type
++Δcp12
++Δcp12::cp12 (complement, wild type-like)
++Δcp12::cp12ΔCysC (complement, with mutation in the Cysteine pair in C-terminal)
++Δcp12::cp12ΔCysN (complement, with mutation in the Cysteine pair in N-terminal)+Δcp12::cp12ΔCysNC (complement, with mutation in both Cysteine pairs in C-terminal and N-terminal)
 
 The three metabolites for which we had measurements of relative enrichment and metabolite concentration were 3PGA, 2PGA and PEP under dark conditions only with labeled CO2 as carbon source.
 Therefore, we created scenarios to compare results in flux estimation, either by reducing the number of timepoints, utilizing or not the actual metabolite concentrations and considering or not reversibility. 
