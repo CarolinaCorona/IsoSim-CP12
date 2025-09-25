@@ -1,6 +1,8 @@
+## IsoSim for flux estimation in a small network
+
 In this work, we tried to replicate the use of IsoSim, specifically the model "prenylpyrophosphate pathway" in https://github.com/MetaSys-LISBP/IsoSim 
 with a small network with only three metabolites in *Synechocystis sp.* 6803 PCC with 6 different strains. Methods for cultivation and labeling can be found here https://nph.onlinelibrary.wiley.com/doi/10.1111/nph.70412.
-These strains differ in the functionality or lack thereof of the protein CP12:
+These strains differ in the functionality or lack thereof of the protein CP12, which downregulates the Calvin-Benson Cycle under dark conditions:
 
 1. Wild Type
 2. Δcp12
