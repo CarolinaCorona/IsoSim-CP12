@@ -1,7 +1,7 @@
 ## IsoSim for flux estimation in a small network
 
-In this work, we tried to replicate the use of IsoSim, specifically the model "prenylpyrophosphate pathway" in https://github.com/MetaSys-LISBP/IsoSim 
-with a small network with only three metabolites in *Synechocystis sp.* 6803 PCC with 6 different strains. Methods for cultivation and labeling can be found here https://nph.onlinelibrary.wiley.com/doi/10.1111/nph.70412.
+In this work, we tried to replicate the use of IsoSim, specifically the model "prenylpyrophosphate pathway" in https://github.com/MetaSys-LISBP/IsoSim with a small network with only three metabolites in *Synechocystis sp.* 6803 PCC with 6 different strains. Methods for cultivation and labeling can be found here https://nph.onlinelibrary.wiley.com/doi/10.1111/nph.70412.
+Follow the authors' guide to install and run IsoSim first with their example models to guarantee that the environment is ready to be tested with other files.
 These strains differ in the functionality or lack thereof of the protein CP12, which downregulates the Calvin-Benson Cycle under dark conditions:
 
 1. Wild Type
@@ -40,5 +40,4 @@ That is why we conducted the experiments under the assumption of a global flux t
 
 The independent runs with added noise can be obtained through "Repeat and source 10 runs.R", just be careful to change the names of folders and files accordingly.
 
-"General Plots.R" helps to visualize both the label propagation simulation created by IsoSim through the different strains and scenarios, with their respective cases and some other important figures,
-namely, plots containing the flux estimation and confidence interval through the 10 runs.
+"General Plots.R" helps to visualize both the label propagation simulation created by IsoSim through the different strains and scenarios, with their respective cases and some other important figures, namely, plots containing the flux estimation and confidence interval through the 10 runs.
