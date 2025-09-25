@@ -14,7 +14,7 @@
 ####################################
 cat("
 This code calculates the flux through the 3PG-2PG-PEP pathway for 6 strains
-of Synechocystis sp. Upper bound for flux in dcp12 was raised from 10 to 100.
+of Synechocystis sp. Upper bound for flux in dcp12 was raised from 10 to 100. 
 
 ")
 ####################################
